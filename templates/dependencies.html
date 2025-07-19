@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dependency Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .loader { border-top-color: #3498db; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; }
+        @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900">
+
+    <div class="w-full p-4 md:p-8 bg-gray-900 text-white min-h-screen relative">
+        <header class="mb-12 text-center">
+            <div class="flex justify-center items-center mb-2 relative">
+                <h1 class="text-4xl font-bold text-center text-indigo-400">Dependency Scanner</h1>
+                <button id="settings-btn" class="absolute right-0 text-gray-400 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+            </div>
+            <p class="mt-4 text-lg text-gray-600">Analyze and update your project's dependencies directly from GitHub.</p>
+        </header>
+
+        <!-- Scan Form -->
+        <div class="bg-white p-8 rounded-xl shadow-lg mb-10">
+            <form id="scan-form" class="flex flex-col sm:flex-row items-center gap-4">
+                <input type="url" id="repo-url" name="repo_url" placeholder="https://github.com/user/repository" required 
+                       class="flex-grow w-full p-4 text-lg border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 focus:outline-none transition duration-300">
+                <button type="submit" id="scan-btn" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-4 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform hover:scale-105 duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <span>Scan</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Results Area -->
+        <div id="results-container" class="mt-8"></div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-gray-800 rounded-lg shadow-2xl p-8 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-indigo-400">Settings</h2>
+                <button id="close-modal-btn" class="text-gray-500 hover:text-white">&times;</button>
+            </div>
+            <div>
+                <label for="github-token" class="block text-sm font-medium text-gray-300 mb-2">GitHub Personal Access Token</label>
+                <input type="password" id="github-token" name="github-token" class="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="ghp_...">
+                <p class="text-xs text-gray-500 mt-2">Your token is stored locally and used to create Pull Requests. Required scopes: 'repo'.</p>
+            </div>
+            <hr class="my-6 border-gray-700">
+            <h3 class="text-xl font-semibold text-indigo-400 mb-4">Tracked Repositories</h3>
+            <div class="space-y-4">
+                <div class="flex gap-2">
+                    <input type="url" id="setting-repo-url" placeholder="https://github.com/user/repo" class="flex-grow bg-gray-900 border border-gray-700 rounded-md py-2 px-3 text-white" />
+                    <input type="text" id="setting-branch" placeholder="main" class="w-28 bg-gray-900 border border-gray-700 rounded-md py-2 px-3 text-white" />
+                    <button id="add-repo-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md">Add</button>
+                </div>
+                <table class="w-full text-left text-gray-300">
+                    <thead>
+                        <tr><th class="py-2">Repository</th><th class="py-2">Branch</th><th class="py-2"></th></tr>
+                    </thead>
+                    <tbody id="repo-table-body"></tbody>
+                </table>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="save-settings-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors">Save Token</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const scanForm = document.getElementById('scan-form');
+            const prForm = document.getElementById('pr-form');
+            const resultsArea = document.getElementById('results-container');
+            const loaderContainer = document.getElementById('loader-container');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const scanResultsCard = document.getElementById('scan-results-card');
+            const resultRepoUrl = document.getElementById('result-repo-url');
+            const dependenciesTable = document.getElementById('dependencies-table');
+            const createPrBtn = document.getElementById('create-pr-btn');
+            const prBtnText = document.getElementById('pr-btn-text');
+            const selectAllCheckbox = document.getElementById('select-all-checkbox');
+            const scanBtn = document.getElementById('scan-btn');
+            const settingsBtn = document.getElementById('settings-btn');
+            const settingsModal = document.getElementById('settings-modal');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const saveSettingsBtn = document.getElementById('save-settings-btn');
+            const githubTokenInput = document.getElementById('github-token');
+
+            const repoTableBody = document.getElementById('repo-table-body');
+            const addRepoBtn = document.getElementById('add-repo-btn');
+            const repoUrlInput = document.getElementById('setting-repo-url');
+            const branchInput = document.getElementById('setting-branch');
+
+            let currentRepoUrl = '';
+
+            async function loadRepos() {
+                repoTableBody.innerHTML = '';
+                try {
+                    const res = await fetch('/api/repos');
+                    const repos = await res.json();
+                    repos.forEach(r => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td class="py-2 break-all">${r.repo_url}</td><td class="py-2">${r.branch}</td><td class="py-2 text-right"><button data-url="${r.repo_url}" data-branch="${r.branch}" class="delete-repo-btn text-red-500 hover:underline">Remove</button></td>`;
+                        repoTableBody.appendChild(row);
+                    });
+                } catch (err) {
+                    console.error('Failed to load repos', err);
+                }
+            }
+
+            addRepoBtn.addEventListener('click', async () => {
+                const url = repoUrlInput.value.trim();
+                const branch = branchInput.value.trim() || 'main';
+                if (!url) { alert('Enter repository URL'); return; }
+                try {
+                    const res = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ repo_url: url, branch })
+                    });
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.detail || 'Failed');
+                    }
+                    repoUrlInput.value = '';
+                    loadRepos();
+                } catch (err) { alert(err.message); }
+            });
+
+            repoTableBody.addEventListener('click', async (e) => {
+                if (e.target.classList.contains('delete-repo-btn')) {
+                    const url = e.target.dataset.url;
+                    const branch = e.target.dataset.branch;
+                    try {
+                        const res = await fetch('/api/unregister', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ repo_url: url, branch })
+                        });
+                        if (!res.ok) {
+                            const data = await res.json();
+                            throw new Error(data.detail || 'Failed');
+                        }
+                        loadRepos();
+                    } catch (err) { alert(err.message); }
+                }
+            });
+
+            loadRepos();
+
+            // --- Settings Modal Logic ---
+            settingsBtn.addEventListener('click', () => {
+                settingsModal.classList.remove('hidden');
+            });
+
+            closeModalBtn.addEventListener('click', () => {
+                settingsModal.classList.add('hidden');
+            });
+
+            window.addEventListener('click', (event) => {
+                if (event.target === settingsModal) {
+                    settingsModal.classList.add('hidden');
+                }
+            });
+
+            saveSettingsBtn.addEventListener('click', async () => {
+                const token = githubTokenInput.value;
+                if (!token) {
+                    alert('Please enter a GitHub token.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ github_token: token }),
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to save settings');
+                    }
+
+                    alert('Settings saved successfully!');
+                    settingsModal.classList.add('hidden');
+                } catch (error) {
+                    console.error('Error saving settings:', error);
+                    alert(`Error: ${error.message}`);
+                }
+            });
+
+            // --- Main Scan Logic ---
+            scanForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const repoUrlInput = document.getElementById('repo-url');
+                currentRepoUrl = repoUrlInput.value;
+
+                // --- UI Reset and Loading State ---
+                resultsArea.classList.remove('hidden');
+                scanResultsCard.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+                loaderContainer.style.display = 'block';
+                dependenciesTable.innerHTML = '';
+                createPrBtn.disabled = true;
+                scanBtn.disabled = true;
+                scanBtn.classList.add('cursor-not-allowed', 'opacity-75');
+
+                try {
+                    const response = await fetch(`/api/scan-dependencies?repo_url=${encodeURIComponent(currentRepoUrl)}`);
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'An unknown error occurred during the scan.');
+                    }
+
+                    resultRepoUrl.textContent = data.repo_url.replace('https://github.com/', '');
+                    resultRepoUrl.href = data.repo_url;
+
+                    let hasUpdates = false;
+                    if (data.dependencies.length === 0) {
+                        dependenciesTable.innerHTML = '<tr><td colspan="4" class="text-center p-8 text-gray-500">No dependencies found or all are up-to-date.</td></tr>';
+                    } else {
+                        data.dependencies.forEach(dep => {
+                            const isOutdated = dep.current_version !== dep.latest_version;
+                            if (isOutdated) hasUpdates = true;
+
+                            const row = document.createElement('tr');
+                            row.className = isOutdated ? 'bg-yellow-50' : 'bg-white';
+                            row.innerHTML = `
+                                <td class="p-4">
+                                    ${isOutdated ? `<input type="checkbox" name="update_packages" value="${dep.name}" class="update-checkbox h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">` : ''}
+                                </td>
+                                <td class="p-4 font-medium text-gray-900">${dep.name}</td>
+                                <td class="p-4 text-gray-600">${dep.current_version}</td>
+                                <td class="p-4 font-semibold ${isOutdated ? 'text-green-600' : 'text-gray-600'}">${dep.latest_version || 'N/A'}</td>
+                            `;
+                            dependenciesTable.appendChild(row);
+                        });
+                    }
+                    
+                    selectAllCheckbox.disabled = !hasUpdates;
+                    scanResultsCard.classList.remove('hidden');
+
+                } catch (err) {
+                    errorText.textContent = err.message;
+                    errorMessage.classList.remove('hidden');
+                } finally {
+                    loaderContainer.style.display = 'none';
+                    scanBtn.disabled = false;
+                    scanBtn.classList.remove('cursor-not-allowed', 'opacity-75');
+                }
+            });
+
+            // --- Event Listeners for Checkboxes and PR Button ---
+            dependenciesTable.addEventListener('change', (e) => {
+                if (e.target.classList.contains('update-checkbox')) {
+                    const checkedBoxes = dependenciesTable.querySelectorAll('.update-checkbox:checked');
+                    createPrBtn.disabled = checkedBoxes.length === 0;
+                }
+            });
+
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const checkboxes = dependenciesTable.querySelectorAll('.update-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = e.target.checked;
+                });
+                createPrBtn.disabled = !e.target.checked;
+            });
+
+            prForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                createPrBtn.disabled = true;
+                prBtnText.textContent = 'Creating PR...';
+
+                const selectedPackages = Array.from(dependenciesTable.querySelectorAll('.update-checkbox:checked')).map(cb => cb.value);
+
+                try {
+                    const response = await fetch('/api/create-pr', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            repo_url: currentRepoUrl,
+                            packages: selectedPackages
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Failed to create Pull Request.');
+                    }
+
+                    // Success! Redirect or show a message.
+                    prBtnText.textContent = 'PR Created!';
+                    createPrBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    createPrBtn.classList.add('bg-blue-600');
+                    window.open(data.pr_url, '_blank'); // Open PR in new tab
+
+                } catch (err) {
+                    errorText.textContent = err.message;
+                    errorMessage.classList.remove('hidden');
+                    prBtnText.textContent = 'Create Pull Request'; // Reset button text
+                    createPrBtn.disabled = false; // Re-enable on error
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+                        <td>
+                            ${isOutdated ? '<span class="update-available">Доступно обновление</span>' : 'Актуальная'}
+                        </td>
+                    </tr>
+                `;
+                dependenciesTbody.innerHTML += row;
+            });
+
+            updateAllBtn.style.display = outdatedCount > 0 ? 'inline-flex' : 'none';
+        }
+
+    </script>
+</body>
+</html>

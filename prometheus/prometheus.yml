@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'webhook-monitor'
+    static_configs:
+      - targets: ['webhook-monitor:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker-registry:5000']
+    metrics_path: '/metrics'
+    scrape_interval: 60s

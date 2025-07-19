@@ -1,0 +1,140 @@
+services:
+  # GitHub Webhook Monitor
+  webhook-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    ports:
+      - "8000:8000"
+    environment:
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - DOCKER_REGISTRY=localhost:5000
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - DATABASE_URL=postgresql://cicd_user:${POSTGRES_PASSWORD}@postgres:5432/cicd_monitor
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./logs:/app/logs
+      - /tmp/builds:/tmp/builds
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Local Docker Registry
+  docker-registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+    volumes:
+      - registry-data:/var/lib/registry
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - webhook-monitor
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Redis for Build Queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # PostgreSQL for Build History
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=cicd_monitor
+      - POSTGRES_USER=cicd_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+  # Build Agent (для изолированных сборок)
+  build-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.build-agent
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cicd_user:${POSTGRES_PASSWORD}@postgres:5432/cicd_monitor
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/builds:/tmp/builds
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    networks:
+      - ci-cd-network
+
+volumes:
+  registry-data:
+  prometheus-data:
+  grafana-data:
+  redis-data:
+  postgres-data:
+
+networks:
+  ci-cd-network:
+    driver: bridge
