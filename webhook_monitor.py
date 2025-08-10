@@ -97,7 +97,10 @@ class GitHubMonitor:
             return True
         if not signature_header:
             return False
-        sha_name, signature = signature_header.split("=", 1)
+        try:
+            sha_name, signature = signature_header.split("=", 1)
+        except ValueError:
+            return False
         if sha_name != "sha256":
             return False
         mac = hmac.new(self.secret.encode(), msg=payload, digestmod=hashlib.sha256)
