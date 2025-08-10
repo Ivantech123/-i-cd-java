@@ -7,6 +7,7 @@ Build Agent - изолированный сервис для сборки про
 import os
 import json
 import asyncio
+import asyncio.subprocess
 import logging
 import subprocess
 import tempfile
@@ -434,18 +435,23 @@ CMD ["./app"]
         self.redis_client.publish('build_notifications', json.dumps(notification))
     
     async def run_command(self, cmd: list, cwd: str = None, timeout: int = 300) -> subprocess.CompletedProcess:
-        """Выполнение команды с таймаутом"""
+        """Выполнение команды с таймаутом (асинхронно)"""
         try:
-            result = subprocess.run(
-                cmd,
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
                 cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            return result
-        except subprocess.TimeoutExpired:
-            raise Exception(f"Command timed out after {timeout} seconds: {' '.join(cmd)}")
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.communicate()
+                raise Exception(f"Command timed out after {timeout} seconds: {' '.join(cmd)}")
+            return subprocess.CompletedProcess(cmd, process.returncode, stdout.decode(), stderr.decode())
+        except Exception:
+            raise
 
 async def main():
     """Главная функция"""
